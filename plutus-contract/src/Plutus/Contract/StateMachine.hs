@@ -79,6 +79,7 @@ import Ledger.Typed.Tx qualified as Typed
 import Ledger.Value qualified as Value
 import Plutus.ChainIndex (ChainIndexTx (..))
 import Plutus.Contract
+import Plutus.Contract.Request (mkTxContract)
 import Plutus.Contract.StateMachine.MintingPolarity (MintingPolarity (..))
 import Plutus.Contract.StateMachine.OnChain (State (..), StateMachine (..), StateMachineInstance (..))
 import Plutus.Contract.StateMachine.OnChain qualified as SM
@@ -427,7 +428,7 @@ runInitialiseWith customLookups customConstraints StateMachineClient{scInstance}
             <> foldMap (mintingPolicy . curPolicy . ttOutRef) (smThreadToken stateMachine)
             <> Constraints.unspentOutputs utxo
             <> customLookups
-    utx <- either (throwing _ConstraintResolutionError) pure (Constraints.mkTx lookups constraints)
+    utx <- mapError (review _ConstraintResolutionError) (mkTxContract lookups constraints)
     let adjustedUtx = Constraints.adjustUnbalancedTx utx
     unless (utx == adjustedUtx) $
       logWarn @Text $ "Plutus.Contract.StateMachine.runInitialise: "
