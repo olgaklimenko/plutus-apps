@@ -26,7 +26,7 @@ import Cardano.Wallet.Primitive.Types.TokenQuantity qualified as C
 import Cardano.Wallet.Primitive.Types.Tx qualified as C
 import Control.Monad.Freer (Eff, LastMember, Member, sendM, type (~>))
 import Control.Monad.Freer.Error (Error, throwError)
-import Control.Monad.Freer.Extras.Log (LogMsg, logWarn)
+import Control.Monad.Freer.Extras.Log (LogMsg, logDebug, logWarn)
 import Control.Monad.Freer.Reader (Reader, ask)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Data.Aeson (toJSON)
@@ -115,7 +115,10 @@ handleWalletClient config (Wallet (WalletId walletId)) event = do
                     logWarn $ BalanceTxError $ show $ pretty err
                     throwOtherError $ pretty err
                 Right ex -> do
-                    res <- runClient' $ C.balanceTransaction C.transactionClient (C.ApiT walletId) (toJSON ex)
+                    logDebug (WalletClientError $ "[BALANCE_TX] ExportTx (raw): " <> (show ex))
+                    let balanceTxBody = toJSON ex
+                    logDebug (WalletClientError $ "[BALANCE_TX] ExportTx (JSON): " <> (show balanceTxBody))
+                    res <- runClient' $ C.balanceTransaction C.transactionClient (C.ApiT walletId) balanceTxBody
                     case res of
                         -- TODO: use the right error case based on http error code
                         Left err -> pure $ Left $ OtherError $ pack $ show err
