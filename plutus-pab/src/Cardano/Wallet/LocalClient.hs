@@ -26,7 +26,7 @@ import Cardano.Wallet.Primitive.Types.TokenQuantity qualified as C
 import Cardano.Wallet.Primitive.Types.Tx qualified as C
 import Control.Monad.Freer (Eff, LastMember, Member, sendM, type (~>))
 import Control.Monad.Freer.Error (Error, throwError)
-import Control.Monad.Freer.Extras.Log (LogMsg, logWarn)
+import Control.Monad.Freer.Extras.Log (LogMsg, logDebug, logWarn)
 import Control.Monad.Freer.Reader (Reader, ask)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Data.Aeson (toJSON)
@@ -40,19 +40,18 @@ import Data.Text (pack)
 import Data.Text.Class (fromText)
 import Ledger (CardanoTx)
 import Ledger.Ada qualified as Ada
-import Ledger.Address (PaymentPubKeyHash (PaymentPubKeyHash))
 import Ledger.Constraints.OffChain (UnbalancedTx)
-import Ledger.Crypto (PubKeyHash (PubKeyHash))
 import Ledger.Tx.CardanoAPI (SomeCardanoApiTx (SomeTx), ToCardanoError, toCardanoTxBody)
 import Ledger.Value (CurrencySymbol (CurrencySymbol), TokenName (TokenName), Value (Value))
 import Plutus.Contract.Wallet (export)
 import Plutus.PAB.Monitoring.PABLogMsg (WalletClientMsg (BalanceTxError, WalletClientError))
+import Plutus.V1.Ledger.Crypto (PubKeyHash (PubKeyHash))
 import PlutusTx.AssocMap qualified as Map
 import PlutusTx.Builtins.Internal (BuiltinByteString (BuiltinByteString))
 import Prettyprinter (Pretty (pretty))
 import Servant ((:<|>) ((:<|>)), (:>))
 import Servant.Client (ClientEnv, ClientError, ClientM, client, runClientM)
-import Wallet.Effects (WalletEffect (BalanceTx, OwnPaymentPubKeyHash, SubmitTxn, TotalFunds, WalletAddSignature, YieldUnbalancedTx))
+import Wallet.Effects (WalletEffect (BalanceTx, OwnPubKeyHash, SubmitTxn, TotalFunds, WalletAddSignature, YieldUnbalancedTx))
 import Wallet.Emulator.Error (WalletAPIError (OtherError, ToCardanoError))
 import Wallet.Emulator.Wallet (Wallet (Wallet), WalletId (WalletId))
 
@@ -101,9 +100,9 @@ handleWalletClient config (Wallet (WalletId walletId)) event = do
             sealedTx <- either (throwError . ToCardanoError) pure $ toSealedTx protocolParams networkId tx
             void . runClient $ C.postExternalTransaction C.transactionClient (C.ApiBytesT (C.SerialisedTx $ C.serialisedTx sealedTx))
 
-        ownPaymentPubKeyHashH :: Eff effs PaymentPubKeyHash
-        ownPaymentPubKeyHashH =
-            fmap (PaymentPubKeyHash . PubKeyHash . BuiltinByteString . fst . getApiVerificationKey) . runClient $
+        ownPubKeyHashH :: Eff effs PubKeyHash
+        ownPubKeyHashH =
+            fmap (PubKeyHash . BuiltinByteString . fst . getApiVerificationKey) . runClient $
                 getWalletKey (C.ApiT walletId)
                              (C.ApiT C.UtxoExternal)
                              (C.ApiT (C.DerivationIndex 0))
@@ -116,7 +115,10 @@ handleWalletClient config (Wallet (WalletId walletId)) event = do
                     logWarn $ BalanceTxError $ show $ pretty err
                     throwOtherError $ pretty err
                 Right ex -> do
-                    res <- runClient' $ C.balanceTransaction C.transactionClient (C.ApiT walletId) (toJSON ex)
+                    logWarn (WalletClientError $ "[BALANCE_TX] ExportTx (raw): " <> (show ex))
+                    let balanceTxBody = toJSON ex
+                    logWarn (WalletClientError $ "[BALANCE_TX] ExportTx (JSON): " <> (show balanceTxBody))
+                    res <- runClient' $ C.balanceTransaction C.transactionClient (C.ApiT walletId) balanceTxBody
                     case res of
                         -- TODO: use the right error case based on http error code
                         Left err -> pure $ Left $ OtherError $ pack $ show err
@@ -147,7 +149,7 @@ handleWalletClient config (Wallet (WalletId walletId)) event = do
 
     case event of
         SubmitTxn tx          -> submitTxnH tx
-        OwnPaymentPubKeyHash  -> ownPaymentPubKeyHashH
+        OwnPubKeyHash         -> ownPubKeyHashH
         BalanceTx utx         -> balanceTxH utx
         WalletAddSignature tx -> walletAddSignatureH tx
         TotalFunds            -> totalFundsH
