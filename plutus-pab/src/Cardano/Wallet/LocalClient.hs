@@ -116,6 +116,9 @@ handleWalletClient config (Wallet (WalletId walletId)) event = do
                     logWarn $ BalanceTxError $ show $ pretty err
                     throwOtherError $ pretty err
                 Right ex -> do
+                    logWarn (WalletClientError $ "[BALANCE_TX] ExportTx (raw): " <> (show ex))
+                    let balanceTxBody = toJSON ex
+                    logWarn (WalletClientError $ "[BALANCE_TX] ExportTx (JSON): " <> (show balanceTxBody))
                     res <- runClient' $ C.balanceTransaction C.transactionClient (C.ApiT walletId) (toJSON ex)
                     case res of
                         -- TODO: use the right error case based on http error code

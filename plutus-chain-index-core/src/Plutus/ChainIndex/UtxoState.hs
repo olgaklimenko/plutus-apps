@@ -129,7 +129,7 @@ insert ::
 insert   UtxoState{_usTip=TipAtGenesis} _ = Left InsertUtxoNoTip
 insert s@UtxoState{_usTip= thisTip} ix =
     -- This number will be made into a command line argument in a future PR.
-    let ix'             = trimIndex 500 ix
+    let ix'             = trimIndex 1 ix
         (before, after) = FT.split ((s <=) . snd) ix'
     in case tip (utxoState after) of
         TipAtGenesis -> Right $ InsertUtxoSuccess{newIndex = before FT.|> s, insertPosition = InsertAtEnd}
